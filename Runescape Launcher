@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash -l
 #
 # Copyright (c) 2023, Maite Gamper <mail@maiteswelt.de>
 #
