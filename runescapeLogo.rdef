@@ -1,0 +1,25 @@
+resource app_flags B_SINGLE_LAUNCH;
+
+resource app_version {
+	major  = 0,
+	middle = 9,
+	minor  = 0,
+
+	variety = B_APPV_FINAL,
+	internal = 0,
+
+	short_info = "A launcher script for old-school Runescape",
+	long_info = "This is a launcher script that downloads the old school Runescape launcher and starts it. Please note that runescape itself is closed-source and has a proprietary license.\nThis script is based on https://gitlab.com/coringao/runescape/"
+};
+
+resource app_signature "application/x-vnd.runescape_launcher";
+
+resource("BEOS:ICON") #'VICN' array {
+	$"6E6369660302020402829D9D9DFF52404003FFAA00037F4C000402044030C345"
+	$"30BC3A30304030BC3A30C3454050BC3A50C34550504050C34550BC3A0605AA03"
+	$"5424334B354E58275B21CA66B378CA9DB35302044030C34530BC3A30304030BC"
+	$"3A30C3454035BC3A35C34535504050C34550BC3A0606AE0B3347B8F7C50EB8F5"
+	$"C5952F4C2B512E53BA59C5BEBA20C68F334D374B040A00010102400618000000"
+	$"0000003F5CD6442618BF5CD60A010102023E96593F0CF1BF0CF13E9659486EC8"
+	$"3DBFE40A000100023CC0000000000000003CC0004720004950000A02010300"
+};

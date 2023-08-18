@@ -1,0 +1,144 @@
+#!/bin/bash
+#
+# Copyright (c) 2023, Maite Gamper <mail@maiteswelt.de>
+#
+# Based on https://gitlab.com/coringao/runescape/ (which is (C) 2020 Carlos Donizete Froes, Licensed under 2-Clause-BSD)
+
+# define a function that checks if the game is running and closes fd 10 otherwise
+function game_watchdog() {
+	while kill -0 $1; do
+		sleep 1
+	done
+	exec 10<&-
+	kill -2 $3
+	rm $2
+	exit 0
+}
+
+# show a welcome dialog
+DIALOG="none"
+while [ "$DIALOG" != "I agree" ]; do
+	DIALOG=$(alert --idea "Haiku Runescape Launcher.
+
+Please remember, that whilst this Launcher might stand under a FoSS license, 
+the game itself does not" "I agree" "Read the license" "Ehm NO")
+	
+	echo Dialog output = $DIALOG
+	
+	if [ "$DIALOG" = "Ehm NO" ]; then
+		exit 0
+	fi
+	if [ "$DIALOG" == "Read the license" ]; then
+		DIALOG=$(alert --idea "Copyright (c) 2023, Maite Gamper <mail@maiteswelt.de>
+Source code can be found under https://github.com/TheZeldakatze/haiku-oldschoolrunescape-launcher
+
+This script is based on https://gitlab.com/coringao/runescape/ 
+Copyright (c) 2016-2020, Carlos Donizete Froes <coringao@riseup.net>
+Use of this script is governed by a BSD 2-clause license
+that can be found in the LICENSE file.
+Source code and contact info [For the original project] at https://gitlab.com/coringao/runescape
+
+Game Terms and Conditions: Copyright (c) 1999-2020, Jagex Ltd
+Use of this website is subject to our Terms & Conditions[1],
+Privacy Policy[2] and Cookie Policy[3].
+
+[1] https://www.jagex.com/terms
+[2] https://www.jagex.com/terms/privacy
+[3] https://www.jagex.com/terms/cookies
+" "Show License text" "Go back")
+		if [ "$DIALOG" == "Show License text" ]; then
+			alert --idea "Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+* Redistributions of source code must retain the above copyright notice, this
+  list of conditions and the following disclaimer.
+
+* Redistributions in binary form must reproduce the above copyright notice,
+  this list of conditions and the following disclaimer in the documentation
+  and/or other materials provided with the distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS \"AS IS\"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE." "Back to Main Menu"
+		fi
+	fi
+done
+
+# download the game if neccesary
+LINK="https://oldschool.runescape.com/downloads/OldSchool.dmg"
+HASH="50660098fce6969464d3ad86aa74d2c6a757949b65fe85ee9487962ff6935bfc2d202496a9687a7f0e04c8b6336dfa1e858f0c3781e24058fb3b3d32c33a9201"
+
+JAVA="$JRE11_HOME/bin/java"
+
+RUNESCAPE_DIR="$(finddir B_USER_SETTINGS_DIRECTORY)/runescape"
+
+
+# check if the game was ever downloaded
+if [ ! -f "${RUNESCAPE_DIR}/jagexappletviewer.jar" ]; then
+
+	# inform the user
+	notify --group Runescape --messageID runescapeDownload --timeout 300 --title "Downloading" \
+		"The Runescape launcher is currently being downloaded, please be patient"
+	
+	# create the directory
+	mkdir -p ${RUNESCAPE_DIR}
+	
+	# download and extract the game to that directory
+	cd $RUNESCAPE_DIR
+	wget -O "${RUNESCAPE_DIR}/tmp.dmg" $LINK
+	7z e ${RUNESCAPE_DIR}/tmp.dmg
+	
+	# error out if the file does not exist
+	if [ ! -f "${RUNESCAPE_DIR}/jagexappletviewer.jar" ]; then
+		notify --group Runescape --messageID runescapeDownload --timeout 1 \
+		--title "Error Downloading" "The Runescape launcher could not be downloaded! Exiting ..."
+		exit 1
+	fi
+	notify --group Runescape --messageID runescapeDownload --timeout 1 \
+		--title "Finished Downloading" "The Runescape launcher has been downloaded"
+fi
+
+# trap the SIGINT interrupt to exit 0
+trap `exit 0;` INT
+
+# run the game
+game_output_fifo=$(mktemp -u)
+mkfifo $game_output_fifo
+exec 10<>$game_output_fifo
+
+(($JAVA -Duser.home="$RUNESCAPE_DIR" -Dmyprocessname="Runescape" --add-opens java.base/java.lang=ALL-UNNAMED \
+	-Xmx512m -Xms512m -Djava.class.path="$RUNESCAPE_DIR/jagexappletviewer.jar" \
+	-Dcom.jagex.config=http://oldschool.runescape.com/jav_config.ws \
+	jagexappletviewer "$RUNESCAPE_DIR") 2>&1) > $game_output_fifo &
+java_pid=$!
+quit_line_count=0
+
+# start the game watchdog
+game_watchdog $java_pid $game_output_fifo $$ &
+
+while kill -0 $java_pid; do
+	read <&10 line
+	echo Game Output \(PID: $java_pid\): $line
+	if [[ $line == *"Buffer underrun occured (0/0)..."* ]]; then
+		echo "underun (0/0) detected; quit_line_count:" $quit_line_count
+		((quit_line_count=quit_line_count+1))
+	else
+		quit_line_count=0
+	fi
+	
+	if [ $quit_line_count = 16 ]; then
+		kill -9 $java_pid
+		rm $game_output_fifo
+		exit 0
+	fi
+done
+rm $game_output_fifo
+
+exit 0
